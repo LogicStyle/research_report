@@ -1,0 +1,149 @@
+---
+title: "因子持续性研究"
+author: "量化投资部"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+---
+
+
+
+```{r setup,echo=FALSE,include=FALSE}
+library(quantbox)
+library(knitr)
+knitr::opts_chunk$set(
+  eval = TRUE,
+  warning = FALSE,
+  fig.align = 'center',
+  fig.height=6,
+  fig.width=6
+)
+```
+
+这里做的一个研究是这一期的因子值和下一期的因子值的相关性研究。譬如这期业绩高增长的股票，下期业绩是否继续高增长，这期ROE高的股票下期ROE是否依然高？回答这个问题并容易，我想不同的因子、不同的样本空间、不同的时间段可能会得出不同的结论。为此写了一个通用的函数，TSFR.rptTSF_nextF，函数名起的有点怪，不过功能还算强大。
+
+
+## 0、净利润增速
+
+原始净利润增速与下一年净利润增速之间的相关性如下图所示，可以看出，相关性极低。
+```{r loadata,echo=TRUE,eval=TRUE}
+begT <- as.Date("2005-12-31")
+endT <- as.Date("2017-12-31")
+freq <- "y"
+univ <- "EI000985"
+funchar <- '"factorscore",reportofall(9900604,RDate)' #growth of net profit
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar)
+chart.IC(TSFR)
+```
+
+
+由于净利润增速存在很多异常值，这些异常值对结果可能存在影响。剔除异常值，全市场中性之后，相关性如下图，可以看出相关性明显提升，并且呈现出负相关。我们可以简单的理解为净利润增速的不可持续，不过这里的相关性并不高。
+```{r loadatashow,echo=TRUE}
+refinePar <- refinePar_default(type="scale",sectorAttr=NULL)
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+
+下面是分组之后的表现，可以看出分组的单调性并不高，不过两端的数据有一点意思，大致是高增长的一组来年增速大幅下跌，低增长的一组来年大幅增长，从基数效应也好理解这一现象。
+```{r loadatashowNgroup,echo=TRUE}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+前面研究的是一年的数据相关性，下面简单展示一下每个季度的数据，原始净利润增速与下个季度净利润增速之间的相关性如下图所示，可以看出，相关性较年度数据大幅提升。
+```{r loadataQ,echo=TRUE,eval=TRUE}
+freq <- "q"
+funchar <- '"factorscore",LastQuarterData(RDate,9900604)'
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+
+季度数据的分组单调性明显好于年度数据，净利润增速在季度上呈现一定的延续性。
+```{r loadataQN,echo=TRUE,eval=TRUE}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+这里我们跟换一个样本空间，在中证500里面看看结果如何。
+```{r IVR_LOADDATA500,eval=TRUE}
+begT <- as.Date("2007-12-31")
+endT <- as.Date("2017-12-31")
+univ <- "EI000905"
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+分组表现如下图所示。
+```{r loadataQN500,echo=TRUE,eval=TRUE}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+进一步我们跟换一下中性方式，做一个行业中性。
+```{r IVR_LOADDATA500sec,eval=TRUE}
+refinePar <- refinePar_default(type="scale",sectorAttr=defaultSectorAttr())
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+分组表现如下图所示。
+```{r loadataQN500sec,echo=TRUE,eval=TRUE}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+大致可以看出，换样本空间和换中性方式，对于提升因子的连续性并没有多大帮助。毕竟像净利润增速这种对股价影响很大的因子，如果能够提前预测，那业绩是要爆表了。
+
+## 1、ROE
+
+去年上市公司的ROE与今年ROE的IC如下图所示。ROE年度数据的相关性显著高于前面的净利润增速，高ROE的公司来年ROE仍然高的概率很大。
+```{r VOL_LOADDATA,eval=TRUE}
+freq <- "y"
+funchar <- '"factorscore",reportofall(9900100,RDate)'
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+
+分组的单调性也非常显著。
+```{r VOL_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+前面展示的是年度数据，下面看一下季度数据表现，季度数据表现并没有比年度数据要好。
+```{r VOL_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+freq <- "q"
+funchar <- '"factorscore",LastQuarterData(RDate,9900100)'
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar,refinePar)
+chart.IC(TSFR)
+```
+
+分组的表现如下图所示。
+```{r VOL_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+
+## 2、PB
+前面是从天软提取一些财务数据，需要找到对应的ID，稍微有点麻烦，为了和我们平时的取因子关联起来，函数也支持getTSF这种取因子的方式。
+下面展示一下PB因子，由于短期估值的变动不大，这里PB我们只展示年度数据。
+```{r IVR_LOADDATA,eval=TRUE}
+freq <- "y"
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,refinePar=refinePar,factorFun='gf.PB_mrq', factorPar = list(fillna = TRUE))
+chart.IC(TSFR)
+```
+
+
+分组的表现如下图所示。
+```{r IVR_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Ngroup.overall(TSFR,N = 10)
+```
+
+
+
+
+

@@ -1,0 +1,183 @@
+---
+title: "因子持续性研究"
+author: "量化投资部"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+---
+
+
+
+```{r setup,echo=FALSE,include=FALSE}
+library(quantbox)
+library(knitr)
+knitr::opts_chunk$set(
+  eval = TRUE,
+  warning = FALSE,
+  fig.align = 'center',
+  fig.height=6,
+  fig.width=6
+)
+```
+
+这里做的一个研究是这一期的因子值和下一期的因子值的相关性研究。譬如这期业绩高增长的股票，下期业绩是否继续高增长，这期ROE高的股票下期ROE是否依然高？回答这个问题并容易，我想不同的因子、不同的样本空间、不同的时间段可能会得出不同的结论。为此写了一个通用的函数，TSFR.rptTSF_nextF，函数名起的有点怪，不过功能还算强大。
+
+
+
+
+## 1、净利润增速
+原始净利润增速与下一年净利润增速之间的相关性如下图所示，可以看出，相关性极低。
+```{r loadata,echo=TRUE,eval=TRUE}
+begT <- as.Date("2005-12-31")
+freq <- "y"
+if(freq=='q'){
+  endT <- as.Date("2017-09-30")
+}else{
+  endT <- as.Date("2016-12-31")
+}
+univ <- "EI000985"
+funchar <- '"factorscore",reportofall(9900604,RDate)' #growth of net profit
+TSFR <- TSFR.rptTSF_nextF(begT,endT,freq,univ,funchar)
+chart.IC(TSFR)
+```
+
+
+由于净利润增速存在很多异常值，这些异常值对结果可能存在影响。剔除异常值，全市场中性之后，相关性如下图，可以看出相关性明显提升，并且呈现出负相关。我们可以简单的理解为净利润增速的不可持续，不过这里的相关性并不高。
+```{r loadatashow,echo=FALSE}
+refinePars <- list(scale = refinePar_default("scale",sectorAttr = NULL),
+                   scale_indfct= refinePar_default("scale",
+                                                   sectorAttr = defaultSectorAttr("ind_fct")),
+                   reg_lm = refinePar_default("reg", 
+                                              sectorAttr = defaultSectorAttr("ind"),
+                                              regLists = list(fl_cap(log = TRUE))),
+                   reg_cap = refinePar_default("reg_glm", 
+                                               sectorAttr = defaultSectorAttr("ind"), 
+                                               regLists = list(fl_cap(log = TRUE))),
+                   reg_sec = setrefinePar(refinePar_default("reg",
+                                               sectorAttr = defaultSectorAttr("ind"),
+                                               regLists = list(fl_cap(log = TRUE))), std_reg_glmwgt = "sector"))
+
+refinenames <- names(refinePars)
+TSF1 <- TSFR %>% select(date,stockID,factorscore)
+TSF1 <- factor_refine_MF(TSF1,refinePars)
+
+TSF2 <- TSFR %>% select(date,stockID,periodrtn) %>% rename(factorscore=periodrtn)
+TSF2 <- factor_refine_MF(TSF2,refinePars)
+
+
+```
+
+
+不同refine方式对比如下。
+
+```{r loadatashowrefine,echo=FALSE,eval=TRUE,include=TRUE,fig.height=6,fig.width=6, results='asis'}
+for(i in 1:length(refinenames)){
+  TSF1_ <- TSF1[,c('date','stockID',refinenames[i])]
+  colnames(TSF1_) <- c('date','stockID','factorscore')
+  TSF2_ <- TSF2[,c('date','stockID',refinenames[i])]
+  colnames(TSF2_) <- c('date','stockID','periodrtn')
+  TSFR_ <- TSFR %>% select(date,stockID,date_end) %>% left_join(TSF1_,by=c('date','stockID')) %>% 
+    left_join(TSF2_,by=c('date','stockID')) %>% select( date,stockID,factorscore,date_end,periodrtn)
+  
+  cat("  \n")
+  cat("### ","refinepar:",refinenames[i], "  \n")
+  print(chart.IC(TSFR_))
+  cat("  \n")
+  
+  cat("  \n")
+  print(chart.Ngroup.overall(TSFR_,N = 10))
+  cat("  \n")
+  
+  cat("  \n")
+  print(kable(table.ICandNgroup(TSFR_,N = 10),digits = 3))
+  cat("  \n")
+}
+
+
+```
+
+
+
+由于这里的TSFR中factorscore和periodrtn其实都是因子得分，所以做refine需要对两者都进行refine,两者做同样的变换，不影响两者之间的相关性，所以下面的研究都用最简单的行业中性refine。    
+前面研究的是一年的数据相关性，下面简单展示一下每个季度的数据，原始净利润增速与下个季度净利润增速之间的相关性如下图所示，可以看出，相关性较年度数据大幅提升。同时展示几个不同的样本空间内效果。
+```{r loadataQ,echo=FALSE,eval=TRUE,include=TRUE,fig.height=6,fig.width=6, results='asis'}
+refinePar <- refinePar_default("scale",sectorAttr = NULL)
+
+testdf <- data.frame(univ=c('EI000985','EI000300','EI000300','EI000905','EI000905'),
+                     freq=c('q','q','y','q','y'),stringsAsFactors = FALSE)
+testdf <- testdf %>% mutate(funchar=ifelse(freq=='q','"factorscore",LastQuarterData(RDate,9900604)','"factorscore",reportofall(9900604,RDate)'))
+
+
+for(i in 1:nrow(testdf)){
+  
+  if(testdf$univ[i]=='EI000905'){
+    begT <- as.Date("2007-12-31")
+  }
+  
+  if(testdf$freq[i]=='q'){
+    endT <- as.Date("2017-09-30")
+  }else{
+    endT <- as.Date("2016-12-31")
+  }
+  
+  TSFR <- TSFR.rptTSF_nextF(begT,endT,testdf$freq[i],testdf$univ[i],testdf$funchar[i],refinePar)
+  
+  cat("  \n")
+  cat("### ",paste(testdf$univ[i],testdf$freq[i],sep = "_"), "  \n")
+  print(chart.IC(TSFR))
+  cat("  \n")
+  
+  cat("  \n")
+  print(chart.Ngroup.overall(TSFR,N = 10))
+  cat("  \n")
+  
+  cat("  \n")
+  print(kable(table.ICandNgroup(TSFR,N = 10),digits = 3))
+  cat("  \n")
+}
+
+```
+
+
+样本空间对统计结果的影响较小，下面统一在中证全指范围内测试
+```{r loadataQ2,echo=FALSE,eval=TRUE,include=TRUE,fig.height=6,fig.width=6, results='asis'}
+univ <- 'EI000985'
+testdf <- data.frame(type=c('revenue_growth','revenue_growth','bookvalue_perstock_growth','bookvalue_perstock_growth',
+                            'ROE','ROE','ROIC','ROIC','dividend_to_price','dividend_to_earning'),
+                     freq=c('y','q','y','q','y','q','y','q','y','y'),
+                     funchar=c('"factorscore",reportofall(9900600,RDate)','"factorscore",LastQuarterData(RDate,9900600)',
+                               '"factorscore",reportofall(9900004,RDate)','"factorscore",LastQuarterData(RDate,9900004)',
+                               '"factorscore",reportofall(9900100,RDate)','"factorscore",LastQuarterData(RDate,9900100)',
+                               '"factorscore",reportofall(9901115,RDate)','"factorscore",LastQuarterData(RDate,9901115)',
+                               '"factorscore",reportofall(9900501,RDate)','"factorscore",reportofall(9900500,RDate)'),
+                     stringsAsFactors = FALSE)
+
+for(i in 1:nrow(testdf)){
+  
+  if(testdf$freq[i]=='q'){
+    endT <- as.Date("2017-09-30")
+  }else{
+    endT <- as.Date("2016-12-31")
+  }
+  
+  TSFR <- TSFR.rptTSF_nextF(begT,endT,testdf$freq[i],univ,testdf$funchar[i],refinePar)
+  
+  cat("  \n")
+  cat("## ",paste(testdf$type[i],testdf$freq[i],sep = "_"), "  \n")
+  print(chart.IC(TSFR))
+  cat("  \n")
+  
+  cat("  \n")
+  print(chart.Ngroup.overall(TSFR,N = 10))
+  cat("  \n")
+  
+  cat("  \n")
+  print(kable(table.ICandNgroup(TSFR,N = 10),digits = 3))
+  cat("  \n")
+}
+
+```
+
+
+

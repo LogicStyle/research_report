@@ -1,0 +1,564 @@
+---
+title: "成长类因子"
+author: "量化投资部"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+---
+
+
+
+```{r setup,echo=FALSE,include=FALSE}
+library(quantbox)
+library(knitr)
+knitr::opts_chunk$set(
+  eval = FALSE,
+  warning = FALSE,
+  fig.align = 'center'
+)
+```
+
+## 0、加载数据
+
+```{r loadata,echo=TRUE,eval=TRUE,include=FALSE}
+#  -------single factor test step by step  -----
+fls <- buildFactorLists(
+  buildFactorList(factorFun = "gf.NP_YOY",
+                  factorDir = 1,
+                  factorPar=list(is1q=FALSE,filt=0),
+                  factorName = "NP_YOY"),
+  buildFactorList(factorFun = "gf.G_MLL_Q",
+                  factorDir = 1,
+                  factorPar=list(),
+                  factorName = "G_MLL_Q"),
+  buildFactorList(factorFun = "gf.G_OR_Q",
+                  factorDir = 1,
+                  factorPar=list(filt=0),
+                  factorName = "G_OR_Q"),
+  buildFactorList(factorFun = "gf.G_EPS_Q",
+                  factorDir = 1,
+                  factorPar=list(filt=0),
+                  factorName = "G_EPS_Q"),
+  buildFactorList(factorFun = "gf.G_OR_longterm",
+                  factorDir = 1,
+                  factorPar=list(),
+                  factorName = "G_OR_longterm"),
+  buildFactorList(factorFun = "gf.F_NP_chg",
+                  factorDir = 1,
+                  factorPar=list(con_type = "1,2"),
+                  factorName = "F_NP_chg"),
+  buildFactorList(factorFun = "gf.F_rank_chg",
+                  factorDir = 1,
+                  factorPar=list(con_type = "1,2"),
+                  factorName = "F_rank_chg")
+)
+
+
+# time and univ setting
+begT <- as.Date("2010-01-04")
+endT <- as.Date("2017-11-30")
+holdingEndT <- as.Date("2017-12-31")
+rebFreq <- "month"
+shiftby <- 0
+univ <- "EI000985"
+
+# getTSR
+rebdate <- getRebDates(begT,endT,rebFreq,shiftby)
+ts <- getTS(rebdate,indexID = univ,rm="suspend")
+tsr <- getTSR(ts,date_end_pad = holdingEndT)
+
+
+# raw factor descrptive statistics
+tsfr_raw <- getMultiFactor(tsr,FactorList = fls)
+tsfrs_raw <- mTSF2TSFs(tsfr_raw)
+fnames <- names(tsfrs_raw)
+
+# table.Fct_descr(tsfr_raw,9)
+# sectorAttrs <- list(ind=defaultSectorAttr("ind"),
+#                     fct=defaultSectorAttr("fct"),
+#                     ind_fct=defaultSectorAttr("ind_fct"))
+# chart.Fct_anova(tsfr_raw,sectorAttrs)
+
+# factor refine research
+refinePars <- list(scale = refinePar_default("scale",NULL),
+                   scale_ind = refinePar_default("scale",defaultSectorAttr("ind")),
+                   scale_indfct= refinePar_default("scale",defaultSectorAttr("ind_fct")),
+                   reg_indfct = refinePar_default("reg",defaultSectorAttr("ind")))
+tablestats <- data.frame()
+mtsfrrefine <- data.frame()
+tablenames <- c("IC_mean","IC_IR","IC_hitRatio","Annualized Return",
+                 "Annualized Sharpe(Rf=0%)","Worst Drawdown","Beta","Size")
+```
+
+```{r loadatashow,echo=TRUE}
+#  -------single factor test step by step  -----
+fls <- buildFactorLists(
+  buildFactorList(factorFun = "gf.NP_YOY",
+                  factorDir = 1,
+                  factorPar=list(is1q=FALSE,filt=0),
+                  factorName = "NP_YOY"),
+  buildFactorList(factorFun = "gf.G_MLL_Q",
+                  factorDir = 1,
+                  factorPar=list(),
+                  factorName = "G_MLL_Q"),
+  buildFactorList(factorFun = "gf.G_OR_Q",
+                  factorDir = 1,
+                  factorPar=list(filt=0),
+                  factorName = "G_OR_Q"),
+  buildFactorList(factorFun = "gf.G_EPS_Q",
+                  factorDir = 1,
+                  factorPar=list(filt=0),
+                  factorName = "G_EPS_Q"),
+  buildFactorList(factorFun = "gf.G_OR_longterm",
+                  factorDir = 1,
+                  factorPar=list(),
+                  factorName = "G_OR_longterm"),
+  buildFactorList(factorFun = "gf.F_NP_chg",
+                  factorDir = 1,
+                  factorPar=list(con_type = "1,2"),
+                  factorName = "F_NP_chg"),
+  buildFactorList(factorFun = "gf.F_rank_chg",
+                  factorDir = 1,
+                  factorPar=list(con_type = "1,2"),
+                  factorName = "F_rank_chg")
+)
+
+
+# time and univ setting
+begT <- as.Date("2010-01-04")
+endT <- as.Date("2017-11-30")
+holdingEndT <- as.Date("2017-12-31")
+rebFreq <- "month"
+shiftby <- 0
+univ <- "EI000985"
+
+# getTSR
+rebdate <- getRebDates(begT,endT,rebFreq,shiftby)
+ts <- getTS(rebdate,indexID = univ,rm="suspend")
+tsr <- getTSR(ts,date_end_pad = holdingEndT)
+
+
+# raw factor descrptive statistics
+tsfr_raw <- getMultiFactor(tsr,FactorList = fls)
+tsfrs_raw <- mTSF2TSFs(tsfr_raw)
+fnames <- names(tsfrs_raw)
+
+# table.Fct_descr(tsfr_raw,9)
+# sectorAttrs <- list(ind=defaultSectorAttr("ind"),
+#                     fct=defaultSectorAttr("fct"),
+#                     ind_fct=defaultSectorAttr("ind_fct"))
+# chart.Fct_anova(tsfr_raw,sectorAttrs)
+
+# factor refine research
+refinePars <- list(scale = refinePar_default("scale",NULL),
+                   scale_ind = refinePar_default("scale",defaultSectorAttr("ind")),
+                   scale_indfct= refinePar_default("scale",defaultSectorAttr("ind_fct")),
+                   reg_indfct = refinePar_default("reg",defaultSectorAttr("ind")))
+tablestats <- data.frame()
+mtsfrrefine <- data.frame()
+tablenames <- c("IC_mean","IC_IR","IC_hitRatio","Annualized Return",
+                 "Annualized Sharpe(Rf=0%)","Worst Drawdown","Beta","Size")
+
+```
+
+## 1、因子`r fnames[1]`
+
+```{r VOL_LOADDATA,eval=TRUE}
+fname_ <- fnames[1]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r VOL_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r VOL_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r VOL_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r VOL_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r VOL_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+不同refine方式下因子分组多空收益图
+```{r VOL_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r VOL_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r VOL_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+## 2、因子`r fnames[2]`
+```{r IVR_LOADDATA,eval=TRUE}
+fname_ <- fnames[2]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r IVR_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r IVR_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r IVR_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r IVR_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r IVR_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+
+不同refine方式下因子分组多空收益图
+```{r IVR_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r IVR_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r IVR_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+## 3、因子`r fnames[3]`
+```{r BETA_LOADDATA,eval=TRUE}
+fname_ <- fnames[3]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r BETA_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r BETA_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r BETA_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r BETA_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r BETA_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+
+不同refine方式下因子分组多空收益图
+```{r BETA_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r BETA_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r BETA_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+## 4、因子`r fnames[4]`
+```{r LIQ_LOADDATA,eval=TRUE}
+fname_ <- fnames[4]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r LIQ_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r LIQ_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r LIQ_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r LIQ_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r LIQ_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+不同refine方式下因子分组多空收益图
+```{r LIQ_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r LIQ_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r LIQ_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+## 5、因子`r fnames[5]`
+```{r 5LIQ_LOADDATA,eval=TRUE}
+fname_ <- fnames[5]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r 5LIQ_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r 5LIQ_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r 5LIQ_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r 5LIQ_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r 5LIQ_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+不同refine方式下因子分组多空收益图
+```{r 5LIQ_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r 5LIQ_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r 5LIQ_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+
+## 6、因子`r fnames[6]`
+```{r 65LIQ_LOADDATA,eval=TRUE}
+fname_ <- fnames[6]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r 65LIQ_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r 65LIQ_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r 65LIQ_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r 65LIQ_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r 65LIQ_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+不同refine方式下因子分组多空收益图
+```{r 65LIQ_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r 65LIQ_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r 65LIQ_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+
+## 7、因子`r fnames[7]`
+```{r 7LIQ_LOADDATA,eval=TRUE}
+fname_ <- fnames[7]
+tsfr <- tsfrs_raw[[fname_]]
+mtsfr <- factor_refine_MF(tsfr,refinePars)
+mtsfrrefine <- rbind(mtsfrrefine,data.frame(mtsfr,fname=fname_))
+```
+
+因子NA比例
+```{r 75LIQ_NA,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_NA(tsfr)
+```
+
+因子原始得分直方图
+```{r 75LIQ_RAW_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+chart.Fct_hist(tsfr,9)
+```
+
+不同refine方式下因子得分分布直方图
+```{r 75LIQ_REF_HIST,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_hist(mtsfr,5)
+```
+
+不同refine方式下因子得分统计表
+```{r 75LIQ_REF_TABLE,echo=TRUE,eval=TRUE}
+kable(MF.table.Fct_descr(mtsfr,5),digits = 2)
+```
+
+不同refine方式下因子IC图
+```{r 75LIQ_REF_IC,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname')
+```
+
+不同refine方式下因子分组多空收益图
+```{r 75LIQ_REF_SPREAD,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5)
+```
+
+不同refine方式下因子分组多空相对收益图
+```{r 75LIQ_REF_SPREAD_RE,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ")
+```
+
+不同refine方式下因子IC和分组收益统计表
+```{r 75LIQ_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+table_ <- table_[,tablenames]
+kable(table_,digits = 2)
+table_ <- data.frame(factorName=fname_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+```
+
+
+## 8、相关性COR
+
+```{r cor_getdata,eval=TRUE}
+size <- gf.ln_mkt_cap(ts)
+size <- dplyr::rename(size,ln_mkt_cap=factorscore)
+mtsf <- dplyr::select(tsfr_raw,-date_end,-periodrtn)
+mtsf <- dplyr::left_join(mtsf,size,by=c('date','stockID'))
+
+mtsfrefine <- reshape2::dcast(mtsfrrefine,date+stockID~fname,value.var = 'reg_indfct')
+mtsfrefine <- dplyr::left_join(mtsfrefine,size,by=c('date','stockID'))
+```
+
+
+原始因子的相关性图
+```{r cor_raw_plot,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_corr(mtsf)
+```
+
+行业市值标准化后因子的相关性图
+```{r cor_raw_plot2,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+MF.chart.Fct_corr(mtsfrefine)
+```
+
+
+## 9、SUMMARY
+
+不同因子不同refine方式下因子IC和分组收益统计表
+```{r summary_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+kable(tablestats,digits = 2)
+```

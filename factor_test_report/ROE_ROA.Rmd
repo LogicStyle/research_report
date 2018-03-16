@@ -1,0 +1,140 @@
+---
+title: "ROE和ROA"
+author: "量化投资部"
+output: 
+  html_document
+---
+
+ROE和ROA。
+
+```{r setup,echo=FALSE,include=FALSE}
+library(quantbox)
+library(knitr)
+knitr::opts_chunk$set(
+  eval = FALSE,
+  warning = FALSE,
+  fig.align = 'center'
+)
+```
+
+```{r loadata,echo=FALSE,eval=TRUE,include=FALSE}
+begT <- as.Date('2005-01-31')
+endT <- as.Date('2017-09-30')
+RebDates <- getRebDates(begT,endT,rebFreq = 'month')
+indexID <- 'EI000985'
+TS <- getTS(RebDates,indexID)
+
+TSF1 <- gf.ROA_ttm(TS)
+refinePar_lists <- list(refinePar_default(type = "old_fashion"),
+                        refinePar_default(type = "old_fashion",sectorAttr = defaultSectorAttr(type = 'ind_fct')))
+ROA <- factor_refine_MF(TSF1, refinePar_lists,refinePar_names = c('ROA_ind','ROA_indfct'))
+ROA <- select(ROA,-rptDate)
+
+TSF2 <- gf.ROE_ttm(TS)
+ROE <- factor_refine_MF(TSF2, refinePar_lists,refinePar_names = c('ROE_ind','ROE_indfct'))
+ROE <- select(ROE,-rptDate)
+
+
+mTSF <- left_join(ROA,ROE,by=c('date','stockID'))
+mTSF1 <- MultiFactor2CombiFactor(mTSF[,c("date","stockID","ROA_ind","ROE_ind")],wgts = c(0.5,0.5))
+mTSF1 <- rename(mTSF1,ROAROE_ind=factorscore)
+mTSF2 <- MultiFactor2CombiFactor(mTSF[,c("date","stockID", "ROA_indfct","ROE_indfct")],wgts = c(0.5,0.5))
+mTSF2 <- rename(mTSF2,ROAROE_indfct=factorscore)
+mTSF <- left_join(mTSF1,mTSF2,by=c('date','stockID'))
+mTSFR <- getTSR(mTSF)
+TSFRs <- mTSF2TSFs(mTSFR)
+
+```
+
+
+
+## 多因子对比
+
+
+```{r mfactorstat,echo=TRUE}
+begT <- as.Date('2005-12-31')
+endT <- as.Date('2017-09-30')
+RebDates <- getRebDates(begT,endT,rebFreq = 'month')
+indexID <- 'EI000985'
+TS <- getTS(RebDates,indexID)
+
+TSF1 <- gf.ROA_ttm(TS)
+refinePar_lists <- list(refinePar_default(type = "old_fashion"),
+                        refinePar_default(type = "old_fashion",sectorAttr = defaultSectorAttr(type = 'ind_fct')))
+ROA <- factor_refine_MF(TSF1, refinePar_lists,refinePar_names = c('ROA_ind','ROA_indfct'))
+ROA <- select(ROA,-rptDate)
+
+TSF2 <- gf.ROE_ttm(TS)
+ROE <- factor_refine_MF(TSF2, refinePar_lists,refinePar_names = c('ROE_ind','ROE_indfct'))
+ROE <- select(ROE,-rptDate)
+
+
+mTSF <- left_join(ROA,ROE,by=c('date','stockID'))
+mTSF1 <- MultiFactor2CombiFactor(mTSF[,c("date","stockID","ROA_ind","ROE_ind")],wgts = c(0.5,0.5))
+mTSF1 <- rename(mTSF1,ROAROE_ind=factorscore)
+mTSF2 <- MultiFactor2CombiFactor(mTSF[,c("date","stockID", "ROA_indfct","ROE_indfct")],wgts = c(0.5,0.5))
+mTSF2 <- rename(mTSF2,ROAROE_indfct=factorscore)
+mTSF <- left_join(mTSF1,mTSF2,by=c('date','stockID'))
+mTSFR <- getTSR(mTSF)
+TSFRs <- mTSF2TSFs(mTSFR)
+
+```
+
+
+### 因子得分密度曲线
+```{r mfdensity,echo=TRUE,eval=TRUE,fig.height=6,fig.width=6}
+mTSF_ <- mTSF[mTSF$date %in% sample(RebDates,4),]
+MF.chart.Fct_density(mTSF_)
+```
+
+### 因子得分统计表
+```{r mfdesc,echo=TRUE,eval=TRUE}
+mfdesc <- MF.table.Fct_descr(mTSF)
+mfdesc <- mfdesc[mfdesc$date %in% sample(RebDates,3),]
+kable(mfdesc,digits = 2)
+```
+
+
+
+### 多因子相关性图
+```{r mfcorr,echo=TRUE,eval=TRUE,fig.height=5,fig.width=6}
+MF.chart.Fct_corr(mTSF)
+```
+
+
+
+### 多因子IC图
+```{r mfic,echo=TRUE,eval=TRUE,fig.height=7,fig.width=7}
+MF.chart.IC(mTSFR,facet_by = 'fname')
+```
+
+
+### 多因子IC相关性图
+```{r mficcorr,echo=TRUE,eval=TRUE,fig.height=5,fig.width=6}
+MC.chart.IC.corr(TSFRs)
+```
+
+### 多因子IC统计表
+```{r mficcorrtb,echo=TRUE,eval=TRUE}
+kable(MC.table.IC(TSFRs),digits = 3)
+```
+
+### 多因子分组收益图
+```{r mfngroup,echo=TRUE,eval=TRUE,warning=FALSE,fig.height=7,fig.width=8}
+MC.chart.Ngroup.overall(TSFRs)
+```
+
+
+### 多因子分组多空收益图
+```{r mfngroupspread,echo=TRUE,eval=TRUE,fig.height=5,fig.width=6}
+MF.chart.Ngroup.spread(mTSFR,N = 10,facet_by = 'fname')
+```
+
+### 多因子分组多空收益统计表
+```{r mfngrouptb,echo=TRUE,eval=TRUE,warning=FALSE}
+kable(MC.table.Ngroup.overall(TSFRs),digits = 2)
+```
+
+
+
+

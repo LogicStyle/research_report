@@ -1,0 +1,339 @@
+---
+title: "多因子模板之因子初选"
+author: "陶阿明"
+date: "`r format(Sys.time(), '%Y/%m/%d')`"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(quantbox)
+library(PortfolioAnalytics)
+library(ROI)
+knitr::opts_chunk$set(echo=FALSE)
+tsInclude()
+tsConnect()
+```
+
+   
+```{r loadTSF, include=FALSE}
+begT <- as.Date('2009-12-31')
+tmp <- getRebDates(begT,Sys.Date())
+endT <- max(tmp[tmp<Sys.Date()])
+freq <- 'month'
+RebDates <- getRebDates(begT,endT,freq)
+indexID <- 'EI000016'
+if(substr(indexID,1,2)=='ES') {
+  indexName <- CT_industryList(ID=indexID)$IndustryName
+}else{
+  indexName <- stockID2name(indexID)
+}
+
+TS <- getTS(RebDates,indexID)
+tmpname <- paste(getwd(),"/MFData/",paste(indexID,freq,"TSMF.RData",sep = '_'),sep='')
+if(file.exists(tmpname)){
+  load(tmpname)
+}else{
+  factorIDs <- c("F000003","F000004","F000006","F000007","F000008","F000009",
+                 "F000010","F000011","F000012","F000013","F000014",
+                 "F000016","F000017","F000018")
+  tmp <- buildFactorLists_lcfs(factorIDs,factorOutlier=3)
+  FactorLists <- buildFactorLists(
+    buildFactorList(factorFun="gf.ln_mkt_cap",
+                    factorPar=list(),
+                    factorDir=-1),
+    buildFactorList(factorFun="gf.NP_YOY",
+                    factorPar=list(),
+                    factorDir=1),
+    buildFactorList(factorFun="gf.G_MLL_Q",
+                    factorPar=list(),
+                    factorDir=1),
+    buildFactorList(factorFun="gf.GG_NP_Q",
+                    factorPar=list(),
+                    factorDir=1),
+    buildFactorList(factorFun="gf.GG_OR_Q",
+                    factorPar=list(),
+                    factorDir=1),
+    buildFactorList(factorFun="gf.dividend",
+                    factorPar=list(datasrc='wind'),
+                    factorDir=1),
+    factorOutlier=3
+  )
+  FactorLists <- c(tmp,FactorLists)
+  suppressWarnings(TSF <- getMultiFactor(TS, FactorLists,factorStd_mult='norm'))
+  save(TSF,file=tmpname)
+}
+```
+
+
+  
+## A 缺失值处理
+多因子选股和单因子选股的不同在于因子之间的组合，无论是打分排序还是回归，首先都要对因子的缺失值进行处理。虽然可以利用中位数或者平均值等方法填充缺失值，但是当缺失值的确实比例达到一定程度，人为的填充缺失值，会破坏原有的因子分布特征，影响因子的有效性。    
+     
+因而在进行后续研究之前，需要剔除缺失比例较高的因子。值得注意的是，在不同的样本空间内，因子的缺失比例也不同，举个最简单的例子，银行股预期因子基本没有缺失，但综合类行业的股票预期因子缺失比例较高。在**`r indexName`**样本空间内，因子缺失比例如下表所示。
+    
+```{r factorNAStat,warning=FALSE}
+TSFNA <- reshape2::melt(TSF,id=c("date", "stockID"))
+TSFNA <- dplyr::group_by(TSFNA,date,variable)
+TSFNA <- dplyr::summarise(TSFNA,nmiss=sum(is.na(value))/length(value))
+TSFNA <- reshape2::dcast(TSFNA,date~variable,value.var = 'nmiss')
+TSFNA <- data.frame(round(t(do.call(cbind, lapply(TSFNA[,-1], summary))),2))
+TSFNA <- TSFNA[order(-TSFNA$Mean),]
+kable(TSFNA)
+```
+    
+       
+**************************************************************************
+    
+    
+**************************************************************************    
+    
+    
+## B 相关性展示
+在处理完因子的缺失值之后，我们开始处理因子的相关性。无论是打分排序还是回归，因子的相关性都是一个无法回避的问题。针对相关性较高的因子，要么将其组合成一个综合因子，要么剔除，如果因子都有效的话，组合为一个综合因子不失为一个较好的方法，如果因子效果不明显，不妨直接剔除。
+    
+衡量因子的相关性的有多种方法，这里采用的是最简单的每期因子标准化之后的相关性，然后做历史平均。历史上各因子值之间相关性如下图。
+    
+```{r factorCorAllData,include=FALSE}
+TSFNA <- TSFNA[(TSFNA$Median<0.2 & TSFNA$Mean<0.2 &TSFNA$Max.<0.25),]
+fnames <- rownames(TSFNA)
+tmp.addf <- NULL  # add factors as you need
+tmp.subf <- c('disposition_',"doublePrice_")  # substract factors as you need
+fnames <- setdiff(union(fnames,tmp.addf),tmp.subf)
+TSFcor <- TSF[,c('date','stockID',fnames)]
+TSFcor <- lapply(TSFcor[,fnames],function(x) as.data.frame(cbind(TSFcor[,c('date','stockID')],factorscore=x)))
+TSFcor <- plyr::llply(TSFcor,RFactorModel:::factor.na,method='median',.progress = "text")
+TSFcor <- plyr::ldply(TSFcor,data.frame,.id = 'factorName')
+TSFcor <- reshape2::dcast(TSFcor,date+stockID~factorName,value.var = 'factorscore')
+```
+     
+      
+```{r factorCorAllPlot,warning=FALSE,fig.width=9,fig.asp=1}
+MC.chart.fCorr(TSFcor)
+```
+
+
+
+
+
+
+       
+**************************************************************************
+    
+    
+**************************************************************************
+
+## C 因子IC及分组
+在处理完因子缺失值和因子相关性之后，开始进行因子的有效性检验。这一部分采用的是常用的IC和分组法。
+
+
+### a 各因子IC及分组
+    
+各因子的IC序列如下图所示。
+```{r factorICChart,warning=FALSE,fig.width=10,fig.asp=1.5}
+TSFR <- getTSR(TSFcor)
+TSFRs <- lapply(TSFcor[,fnames],function(x) as.data.frame(cbind(TSFR[,c('date','date_end','stockID')],factorscore=x,periodrtn=TSFR[,'periodrtn'])))
+MC.chart.IC(TSFRs)
+```
+
+
+因子IC的统计如下表所示。
+```{r factorICtable,warning=FALSE}
+ICtable <- data.frame(MC.table.IC(TSFRs))
+ICtable <- ICtable[order(-ICtable$IC_mean),]
+kable(ICtable,digits = 2)
+```
+
+
+各因子的分组年化收益如下图所示。
+```{r factorNGroupChart,warning=FALSE,fig.width=10,fig.asp=1.5}
+MC.chart.Ngroup.overall(TSFRs)
+```
+
+
+全部因子分组的统计如下表所示。
+```{r factorNGrouptable,warning=FALSE}
+ngrouptable <- data.frame(MC.table.Ngroup.overall(TSFRs))
+ngrouptable <- ngrouptable[order(-ngrouptable$Annualized.Return),]
+kable(ngrouptable,digits = 2)
+```
+
+
+### b alpha因子IC及分组及相关性
+综合IC的绝对值、波动率、胜率以及因子分组的表现，选出长期来看有alpha性的因子。alpha因子IC序列如下图所示。
+```{r alphafICChart,warning=FALSE,fig.width=10,fig.asp=1}
+alphaf_IC <- rownames(ICtable[ICtable$IC_mean>=0.03 & ICtable$IC_t>=2 & ICtable$IC_hitRatio>=0.55,])
+alphaf_IC2 <- rownames(ngrouptable[ngrouptable$Annualized.Return>=0.05 & ngrouptable$Annualized.Sharpe.Rf.0..>=0.5 & ngrouptable$HitRatio>0.55,])
+tmp.addf <- NULL  # add factors as you need
+tmp.subf <- 'ILLIQ'  # substract factors as you need
+alphaf_IC <- setdiff(union(union(alphaf_IC,alphaf_IC2),tmp.addf),tmp.subf)
+TSFRs_alphaIC <- TSFRs[alphaf_IC]
+MC.chart.IC(TSFRs_alphaIC)
+```
+     
+     
+alpha因子分组收益如下图所示。
+     
+```{r alphafNgroup,warning=FALSE,fig.width=10,fig.asp=1}
+MC.chart.Ngroup.overall(TSFRs_alphaIC,N=10)
+```
+
+
+根据前面的分析，alpha因子每期相关性如下图。
+     
+```{r ICalphafactorCorYear,warning=FALSE,fig.width=10,fig.asp=1}
+# tmp <- MC.table.fCorr(TSFcor)
+# tmp[upper.tri(tmp)] <- NA
+# tmpCor <- reshape2::melt(tmp,na.rm =T,factorsAsStrings=F)
+# tmp <- dplyr::filter(tmpCor,value<1,value>0.4 | value<(-0.4))
+# 
+# fnames <- setdiff(colnames(TSFcor),c('date','stockID',as.character(tmp$Var2)))
+# tmp.addf <- ''  # add factors as you need
+# tmp.subf <- ''  # substract factors as you need
+# fnames <- setdiff(union(fnames,tmp.addf),tmp.subf)
+# TSFcor <- TSFcor[,c('date','stockID',fnames)]
+# MC.chart.fCorr(TSFcor,'4 years')
+TSF_ICalpha <- TSFcor[,c('date','stockID',alphaf_IC)]
+MC.chart.fCorr(TSF_ICalpha,'2 years')
+```
+     
+     
+     
+alpha因子IC相关性如下图所示。  
+     
+```{r alphariskfICCor,warning=FALSE}
+MC.chart.IC.corr(TSFRs_alphaIC)
+```
+   
+### c 综合因子IC及分组
+将上述的alpha因子综合为一个新的综合因子，综合因子的IC序列如下图。
+```{r superalphaIC,warning=FALSE}
+wgt <- MC.wgt.CAPM(TSFRs_alphaIC,wgtmin = 0.05,wgtmax = 0.2)
+TSF_ICComb <- cbind(TSF_ICalpha[,c(1:2)],factorscore=as.matrix(TSF_ICalpha[,-(1:2)]) %*% as.matrix(wgt))
+TSFR_ICComb <- left_join(TSF_ICComb,TSFR[,c("date","date_end","stockID","periodrtn")],by=c("date","stockID"))
+chart.IC(TSFR_ICComb)
+```
+
+
+综合因子的IC统计如下。
+```{r superalphaICtable,warning=FALSE}
+kable(table.IC(TSFR_ICComb),digits = 2)
+```
+      
+     
+综合因子的分组表现如下图。
+     
+```{r superalphaICNgroup,warning=FALSE}
+chart.Ngroup.overall(TSFR_ICComb)
+```
+
+     
+综合因子的历年分组表现如下图。
+      
+```{r superalphaICNgroupyear,warning=FALSE,fig.width=10,fig.asp=1}
+chart.Ngroup.seri_bar(TSFR_ICComb,Nbin = 'year')
+```
+    
+     
+综合因子的多空收益如下图。
+        
+```{r superalphaICspreadchart,warning=FALSE}
+chart.Ngroup.spread(TSFR_ICComb)
+```
+
+      
+**************************************************************************
+    
+    
+**************************************************************************
+
+
+
+
+     
+## D 基于回归的因子分析法
+上述因子IC、因子分组是一种检验因子有效性的方法。下面介绍的基于回归的因子分析方法是近期比较热门的一种方法，基于回归的方法可以更好地剥离因子之间的相关性，可以集中暴露某些因子，是一种**看上去**更为科学的分析方法。模型本身各有优劣，关键在于使用模型的人。   
+    
+回归法筛选因子比较简单，就是根据每期因子对回归的$R^2$的贡献度，结合因子的收益率稳定性来筛选。具体的细节可以参考东方证券的几篇研究报告，这里不一一展开。
+```{r factorselect,include=FALSE}
+TSFR <- na.omit(TSFR)
+reg_factor_result <- reg.factor.select(TSFR)
+```  
+
+回归法的因子筛选结果如下表所示。
+```{r factorselecttable}
+kable(reg_factor_result$result,digits = 4)
+```
+
+
+    
+在展示纯因子组合收益之前，先展示一下每期回归的$R^2$，如下图所示。
+```{r regresult,include=FALSE}
+tmp <- na.omit(reg_factor_result$result)
+tmp <- as.character(tmp[tmp$frtn>0.001,'fname'])
+TSFR_reg <- reg_factor_result$TSFR
+TSFR_reg <- TSFR_reg[,c("date","date_end","stockID",tmp,"periodrtn")]
+reg_results <- reg.TSFR(TSFR_reg)
+```
+    
+    
+```{r regrsquare,warning=FALSE}
+chart.reg.rsquare(reg_results)
+```
+     
+    
+    
+各因子的纯因子组合累积净值曲线如下图所示。
+```{r regwealthindex,warning=FALSE,fig.width=10,fig.asp=1}
+chart.reg.fRtnWealthIndex(reg_results,T)
+```
+
+  
+
+
+    
+纯因子组合收益率如下图所示。
+   
+   
+```{r regTable, warning=FALSE}
+regtable <- table.reg.fRtn(reg_results)
+regtable <- regtable[order(-regtable$Sharpe),]
+rownames(regtable) <- NULL
+kable(regtable,digits = 2)
+```  
+     
+各因子的纯因子组合收益柱状图如下图所示。
+
+```{r regFactorBar,warning=FALSE,fig.width=10,fig.asp=1}
+chart.reg.fRtnBar(reg_results)
+```
+
+     
+
+
+    
+
+     
+     
+
+     
+     
+
+
+各因子的纯因子组合收益率相关性如下图所示。
+
+```{r regFactorcor,warning=FALSE}
+MC.chart.regCorr(reg_results)
+```
+
+     
+
+     
+**************************************************************************
+    
+    
+**************************************************************************
+   

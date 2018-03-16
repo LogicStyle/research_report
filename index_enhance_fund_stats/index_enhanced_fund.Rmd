@@ -1,0 +1,192 @@
+---
+title: "沪深300增强和中证500增强"
+output: 
+  html_document
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r getdata,include=FALSE}
+#suppressMessages(source('script.R', encoding = 'UTF-8'))
+load("~/R/Report/index_enhance_fund_stats/data.RData")
+library(quantbox)
+library(stringr)
+library(ggplot2)
+```
+
+## 300增强500增强概况
+目前市场上指数增强基金接近60只，其中号称指数增强但没有实现增强的不少。目前指数增强基金的主战场在沪深300增强和中证500增强上，市场上沪深300增强基金有`r nrow(f_basic_info[f_basic_info$trackindexcode=='EI000300',])`只，中证500增强基金有`r nrow(f_basic_info[f_basic_info$trackindexcode=='EI000905',])`只，具体情况如下表所示。这里新增了几个名义上不是指数增强基金，但其实做的是指数增强的事情。
+
+09年首只沪深300指数增强基金国富沪深300成立，此后每年都有新的沪深300指数增强基金成立。而直到11年首只中证500增强基金富国中证500才成立，然后间隔了两年多，第二只中证500增强基金才成立。虽然我们回测的时候，中证500指数很容易做增强，但从基金的发行来看并非如此，稍后我们会看到第一只中证500增强基金前三年运行的并不如人意。
+
+相比于沪深300和中证500，中证1000会是一个比较好的增强基金的基准，成分股数量足够多，毕竟在上证50里面做增强的难度远大于沪深300，目前也有两只中证1000的指数增强基金。未来随着中证1000的估值进一步下降，这个指数的吸引力会比较大。
+
+```{r info,results='asis'}
+f_basic_info <- f_basic_info %>% arrange(trackindexcode,setupdate) %>% select(fundID,fundName,setupdate,trackindexcode)
+kable(f_basic_info)
+```
+
+## 沪深300增强基金历年表现
+指标说明bias是日偏离度绝对值的均值，TE是跟踪误差，alphaIR是日超额收益的信息比率，alphamaxDD是超额收益的最大回撤。
+
+```{r 300_stat,results='asis'}
+fundstatshow <- fundstat %>% select(date,fundName,rtn,bench,alpha,alphaIR,bias,TE,hitratio,alphamaxDD,trackindexcode) %>% 
+  arrange(trackindexcode,date,desc(alpha)) %>% mutate(rtn = percent(rtn,1),bench = percent(bench,1),alpha =percent(alpha,1),alphaIR=round(alphaIR,3),bias=round(bias,4),TE=percent(TE,1),hitratio=percent(hitratio,0),
+                       alphamaxDD=percent(alphamaxDD,1))
+fundstat1 <- fundstatshow %>% filter(trackindexcode=='EI000300') %>% select(-trackindexcode)
+kable(fundstat1)
+```
+
+
+
+
+## 中证500增强基金历年表现
+```{r 400_stat,results='asis'}
+fundstat1 <- fundstatshow %>% filter(trackindexcode=='EI000905') %>% select(-trackindexcode)
+kable(fundstat1)
+```
+
+
+## 历年累计表现
+指标说明,rtn是累计收益，nyear表示统计区间共多少年，alphaIR是月度超额收益的IR，hitratio是月度胜率，rtn_min是月度最小超额收益，rtn_max是月度最大超额收益。
+```{r stat_total,results='asis'}
+fundstatol <- transform(fundstatol,nyear=round(nyear,1), rtn = percent(rtn,0),rtn_ann = percent(rtn_ann,1),alpha_ann=percent(alpha_ann,1),
+                      alphamaxDD=percent(alphamaxDD,1),alphaIR=round(alphaIR,3),hitratio=percent(hitratio,0),rtn_min=percent(rtn_min,1),
+                       rtn_max=percent(rtn_max,1))
+kable(fundstatol)
+```
+
+
+## 随机组合
+一般情况下，我们做指数增强，都会严格控制行业中性，尤其是在沪深300里面做，这样做的话能够较好的控制跟踪误差。目前控制跟踪误差能够更加精确地组合优化工具来实现，这么做无可厚非。
+
+我们知道一般指数增强基金的要求80%的组合权重来源指数成分股及其备选池，基金净值增长率与业绩比较基准之间的日均跟踪偏离度的绝对值不超过 0.5%，年化跟踪误差不超过 7.75%。由于绝大部分的组合权重来源于指数成分股，我有一个想法，如果全部在成分股里面选股，不控制行业中性，市值中性，能否实现跟踪误差的要求。为了验证这个想法，我在沪深300还有中证500成分股中随机选取80和100只成分股，按自由流通市值加权，每月调仓，看这个随机组合和基准的跟踪误差。针对每个业绩基准，我生成10个随机组合，避免单个随机组合的不稳定性。
+
+事实证明，随机组合完全符合日均跟踪偏离度和年化跟踪误差的要求。出现这种情况的原因我猜测是我们市场同涨同跌的现象仍然很严重，尤其在一个指数内部，当然像上证综指这样的综合性指数另当别论。做这个研究的目的，其实想说我们在做因子投资的时候，适当的放开一些敞口，对跟踪误差的影响并不大。
+
+为了方便的对比，新增了行业中性随机组合、市值中性随机组合、行业市值中性随机组合，这三种随机组合是利用组合优化的模块生成的，前面的随机组合是排序打分得到的。中性的随机组合是随机生成因子收益率，乘以因子暴露，优化目标收益率最大。
+
+
+## 沪深300随机组合
+沪深300随机组合和业绩基准的走势图如下所示。
+```{r 300random,echo=FALSE}
+indexID <- 'EI000300'
+re <- randomnav %>% filter(trackindexcode==indexID) %>% mutate(exc_rtn=nav_rtn-bmk_rtn)
+
+re <- reshape2::dcast(re,date~fundID,value.var = 'exc_rtn')
+re <- xts::xts(re[,-1],order.by = re[,1])
+re <- WealthIndex(re)
+re <- melt.ts(re)
+colnames(re) <- c('date','fundID','nav')
+re <- left_join(re,fundtype[,c('fundID','type')],by='fundID')
+ggplot(data = re) + 
+    geom_line(mapping = aes(x = date, y = nav,color=fundID))+facet_wrap(~type)+theme(legend.position="none")
+```
+     
+     
+随机组合的历年alpha。    
+
+```{r 300randomalpha,echo=FALSE}
+randstat_ <- randstatyear[randstatyear$trackindexcode==indexID,]
+randstat_$date <- lubridate::year(randstat_$date)
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = alpha))+facet_wrap(~type)
+```
+        
+
+随机组合的历年日均偏离度。    
+
+```{r 300randombias,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = bias))+facet_wrap(~type)
+```
+   
+
+随机组合的历年年化跟踪误差。    
+
+```{r 300randomte,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = TE))+facet_wrap(~type)
+```
+
+随机组合的历年alpha最大回撤。   
+
+```{r 300randomalphadd,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = alphamaxDD))+facet_wrap(~type)
+```
+
+   
+随机组合的收益统计如下表所示。    
+
+```{r rand300_stat_total,results='asis'}
+randstat_ <- randstat[randstat$trackindexcode==indexID,]
+randstat_ <- randstat_ %>% select(-bench,-bench_ann,-trackindexcode) %>% select(type,everything())
+randstat_ <- transform(randstat_, rtn = percent(rtn,1),rtn_ann = percent(rtn_ann,1), alpha = percent(alpha,1),alpha_ann=percent(alpha_ann,1),bias=round(bias,4),TE=percent(TE,1),
+                       alphamaxDD=percent(alphamaxDD,1),alphaIR=round(alphaIR,3),hitratio=percent(hitratio,0))
+kable(randstat_)
+```
+
+
+## 中证500随机组合
+中证500随机组合和业绩基准的走势图如下所示。
+```{r 500random,echo=FALSE}
+indexID <- 'EI000905'
+re <- randomnav %>% filter(trackindexcode==indexID) %>% mutate(exc_rtn=nav_rtn-bmk_rtn)
+re <- reshape2::dcast(re,date~fundID,value.var = 'exc_rtn')
+re <- xts::xts(re[,-1],order.by = re[,1])
+re <- WealthIndex(re)
+re <- melt.ts(re)
+colnames(re) <- c('date','fundID','nav')
+re <- left_join(re,fundtype[,c('fundID','type')],by='fundID')
+ggplot(data = re) + 
+    geom_line(mapping = aes(x = date, y = nav,color=fundID))+facet_wrap(~type)+theme(legend.position="none")
+```
+    
+随机组合的历年alpha。   
+
+```{r 500randomalpha,echo=FALSE}
+randstat_ <- randstatyear[randstatyear$trackindexcode==indexID,]
+randstat_$date <- lubridate::year(randstat_$date)
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = alpha))+facet_wrap(~type)
+```
+
+      
+随机组合的历年日均偏离度。   
+
+```{r 500randombias,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = bias))+facet_wrap(~type)
+```
+
+     
+随机组合的历年年化跟踪误差。    
+
+```{r 500randomte,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = TE))+facet_wrap(~type)
+```
+    
+    
+随机组合的历年alpha最大回撤。    
+
+```{r 500randomalphadd,echo=FALSE}
+ggplot(data = randstat_) + 
+    geom_point(mapping = aes(x = date, y = alphamaxDD))+facet_wrap(~type)
+```
+
+   
+随机组合的收益统计如下表所示。    
+   
+```{r rand500_stat_total,results='asis'}
+randstat_ <- randstat[randstat$trackindexcode==indexID,]
+randstat_ <- randstat_ %>% select(-bench,-bench_ann,-trackindexcode) %>% select(type,everything())
+randstat_ <- transform(randstat_, rtn = percent(rtn,1),rtn_ann = percent(rtn_ann,1), alpha = percent(alpha,1),alpha_ann=percent(alpha_ann,1),bias=round(bias,4),TE=percent(TE,1),
+                       alphamaxDD=percent(alphamaxDD,1),alphaIR=round(alphaIR,3),hitratio=percent(hitratio,0))
+kable(randstat_)
+```

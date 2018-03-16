@@ -1,0 +1,201 @@
+---
+title: "Fund_Analyzer"
+output: html_document
+---
+
+```{r input, include=FALSE}
+# input
+fundID <- "003986.OF"
+#bmk <- NULL
+bmk <- "EI000905"
+begT <- NULL
+# begT <- as.Date("2014-01-01")
+endT <- Sys.Date()-1
+factorLists <- NULL
+epsilon = 0.01 # The minimum value for weight in the industry sector session.
+```
+
+```{r setup, include=FALSE}
+library(RFactorModel)
+library(dplyr)
+library(PerformanceAnalytics)
+library(WindR)
+library(knitr)
+library(scales)
+library(ggplot2)
+w.start(showmenu = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r script, include=FALSE}
+# init_date
+Ini_date <- w.wss(fundID,'fund_setupdate')[[2]]
+Ini_date$FUND_SETUPDATE <- w.asDateTime(Ini_date$FUND_SETUPDATE, asdate = T)
+if(is.null(begT)){
+  begT <- Ini_date$FUND_SETUPDATE
+}
+
+# resq
+sq1 <- seq(2000, lubridate::year(endT))
+sq2 <- c('0331','0630','0930','1231')
+resq <- c()
+for(i in sq1){
+  resq <- c(resq, paste0(i,sq2))
+}
+resq <- as.integer(resq)
+resq <- intdate2r(resq)
+resq <- subset(resq, resq >= begT & resq <= endT)
+
+fig_param <- ceiling(length(resq)/2)
+
+## Return Stat
+  dat1 <- MF_getQuote(fundID = fundID, begT = begT, endT = endT, variables = "NAV_adj_return1")
+  
+if(is.null(bmk)){
+  rtn1 <- xts::as.xts(x = dat1$NAV_adj_return1/100, order.by = dat1$date)
+}else{
+  dat1_bmk <- getIndexQuote(stocks = bmk, begT = begT, endT = endT, variables = "pct_chg")
+  dat1_mg <- merge(dat1, dat1_bmk, by = c("date")) 
+  dat1_mg$NAV_adj_return2 <- dat1_mg$NAV_adj_return1/100 - dat1_mg$pct_chg
+  rtn1 <- xts::as.xts(x = dat1_mg$NAV_adj_return2, order.by = dat1_mg$date)
+}
+
+rtn.summary.details <- function(rtn){
+  freq = "year"
+  from <- unique(cut.Date2(zoo::index(rtn),freq,lab.side="begin"))
+  to <- unique(cut.Date2(zoo::index(rtn),freq,lab.side="end"))
+  rtn <- as.zoo(rtn)
+  # ---- periods cumulative rtn
+  table.periods <- timeSeries::fapply(timeSeries::as.timeSeries(rtn),from,to,FUN=PerformanceAnalytics::Return.cumulative)
+  table.periods <- as.matrix(table.periods)
+  rownames(table.periods) <- paste(from,to,sep=" ~ ")
+  colnames(table.periods) <- "rtn"
+  # ---- periods std
+  table.periods_2 <- timeSeries::fapply(timeSeries::as.timeSeries(rtn),from,to,FUN=PerformanceAnalytics::StdDev)
+  table.periods_2 <- as.matrix(table.periods_2)
+  rownames(table.periods_2) <- paste(from,to,sep=" ~ ")
+  colnames(table.periods_2) <- "std"
+  # ---- periods sharpe
+  table.periods_3 <- timeSeries::fapply(timeSeries::as.timeSeries(rtn),from,to,FUN=PerformanceAnalytics::SharpeRatio.annualized)
+  table.periods_3 <- as.matrix(table.periods_3)
+  rownames(table.periods_3) <- paste(from,to,sep=" ~ ")
+  colnames(table.periods_3) <- "sharpe"
+  # ---- periods hitratio
+  table.periods_4 <- timeSeries::fapply(timeSeries::as.timeSeries(rtn),from,to,FUN=hitRatio)
+  table.periods_4 <- as.matrix(table.periods_4)
+  rownames(table.periods_4) <- paste(from,to,sep=" ~ ")
+  colnames(table.periods_4) <- "hitRatio"
+  # ---- periods worst drawdown
+  table.periods_5 <- timeSeries::fapply(timeSeries::as.timeSeries(rtn),from,to,FUN=PerformanceAnalytics::maxDrawdown)
+  table.periods_5 <- as.matrix(table.periods_5)
+  rownames(table.periods_5) <- paste(from,to,sep=" ~ ")
+  colnames(table.periods_5) <- "worstDrawdown"
+  # ---- overall
+  table.overall <- t(rtn.summary(rtn))
+  row.names(table.overall) <- "Overall"
+  colnames(table.overall) <- c("rtn","std","Sharpe","HitRatio","WorstDrawdown")
+  # ---- output
+  re <- cbind(table.periods,table.periods_2,table.periods_3,table.periods_4,table.periods_5)
+  re <- rbind(re,table.overall)
+  return(re)
+}
+re1 <- round(rtn.summary.details(rtn1),digits = 3)
+
+## Factor Stat
+dat2 <- MF_getStockPort(fundID = fundID, rptDate = resq, mode = "all")
+TSW <- dat2[,c("rptDate","stockID","wgt")]
+colnames(TSW) <- c("date","stockID","wgt")
+TSW_raw <- TSW
+if(!is.null(bmk)){
+  TSW$date <- trday.nearest(datelist = TSW$date)
+  TSW <- getActivewgt(TSW, bmk = bmk, res = "active")
+  colnames(TSW) <- c("date","stockID","wgt")
+}
+
+if(is.null(factorLists)){
+  factorLists <- buildFactorLists(buildFactorList("gf.ln_mkt_cap", factorDir = -1),
+                                  buildFactorList("gf.PB_lyr", factorDir = -1),
+                                  buildFactorList("gf.NP_YOY"),
+                                  buildFactorList("gf.pct_chg_per",
+                                                  factorPar = list(N = 60), factorDir = -1),
+                                  buildFactorList("gf.liquidity", factorDir = -1),
+                                  factorStd = "norm", factorNA = "median",
+                                  factorOutlier = 0.025)
+}
+
+re2 <- exposure.port(TSW, factorLists = factorLists)
+plot_dat <- re2
+row.names(re2) <- re2$date
+re2 <- re2[,-1]
+re2 <- t(re2)
+re2 <- as.data.frame(re2)
+
+## Operation Stat  TSW --> stat
+TSW_raw <- dplyr::group_by(TSW_raw, date)
+re3_1 <- MF_Turnover_annual(fundID = fundID, begrptDate = resq[1], endrptDate = tail(resq,1))
+colnames(re3_1) <- c("fundID","annualized_turnover")
+re3_2 <- dplyr::summarise(TSW_raw, "obs" = length(wgt),"total_stock_wgts" = sum(wgt, na.rm = TRUE), "mean_wgt" = mean(wgt, na.rm = TRUE), "max_wgt" = max(wgt, na.rm = TRUE))
+```
+
+## Info
+```{r info, echo=FALSE}
+re0 <- w.wsd(fundID,"sec_name,fund_fundmanager,fund_type,netasset_total",begT,endT,"Period = Q")
+re0 <- re0$Data
+re0 <- tail(re0,1)
+row.names(re0) <- NULL
+re0$NETASSET_TOTAL <- round(re0$NETASSET_TOTAL/100000000,3)
+colnames(re0) <- c("date","name","manager","fund type","size")
+re0$fundID <- fundID
+re0 <- re0[,c("date","fundID","name","manager","fund type","size")]
+if(!is.null(bmk)){
+  re0$bmk <- bmk
+}
+kable(re0, align = 'c')
+```
+
+## Return Stat
+```{r return stat, echo=FALSE}
+re1 <- transform(re1, rtn = percent(rtn), hitRatio = percent(hitRatio), worstDrawdown = percent(worstDrawdown))
+kable(re1, align = 'c')
+```
+
+## Factor Stat
+```{r factor stat, echo=FALSE, fig.height=fig_param}
+# factor contributions
+ind_ <- substr(rownames(re2),1,2) == "ES"
+re2_1 <- re2[ind_,,drop=FALSE]
+re2_2 <- re2[!ind_,,drop=FALSE]
+rownames(re2_1) <- sectorID2name(rownames(re2_1))
+
+for(i in 1:ncol(re2)){
+  re2_1[,i] <- percent(re2_1[,i])
+}
+
+# Plots
+plot_dat <- reshape2::melt(plot_dat,id = "date")
+#
+plot_dat_1 <- subset(plot_dat, substr(variable,1,2) == "ES")
+plot_dat_1$variable <- sectorID2name(plot_dat_1$variable)
+plot_dat_1 <- subset(plot_dat_1, abs(value) > epsilon)
+plot_dat_2 <- subset(plot_dat, substr(variable,1,2) != "ES")
+
+ggplot(data = plot_dat_1, aes(x = variable, y = value))+geom_bar(stat = "identity")+facet_wrap(facets = "date", ncol = 2, scales = 'free')+theme(axis.text.x = element_text(angle = 90))+ xlab("sectors") + ylab("weight")
+
+ggplot(data = plot_dat_2, aes(x = variable, y = value))+geom_bar(stat = "identity")+facet_wrap(facets = "date", ncol = 2)+theme(axis.text.x = element_text(angle = 90))+ xlab("factors") + ylab("factor exposure")
+
+# tables
+kable(re2_1)
+re2_2 <- round(re2_2, 4)
+kable(re2_2)
+```
+
+## Operation Stat
+```{r operation stat, echo=FALSE}
+# re3_1 <- re3_1[,2, drop = FALSE]
+re3_1$period <- paste(begT,endT,sep = " ~ ")
+re3_1 <- re3_1[,c("period", "annualized_turnover")]
+kable(re3_1)
+re3_2$total_stock_wgts <- round(re3_2$total_stock_wgts,4)
+re3_2$mean_wgt <- round(re3_2$mean_wgt,4)
+kable(re3_2)
+```

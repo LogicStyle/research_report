@@ -1,0 +1,204 @@
+---
+title: "Factors"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 3  # upto three depths of headings (specified by #, ## and ###)
+---
+
+```{r setup,echo=FALSE,include=FALSE}
+library(RFactorModel)
+library(dplyr)
+library(knitr)
+knitr::opts_chunk$set(
+  warning = FALSE,
+  fig.align = 'center'
+)
+
+```
+
+## LOAD DATA
+
+```{r loaddata,echo=TRUE,eval=TRUE,include=FALSE}
+# time and univ setting
+begT <- as.Date("2007-01-04")
+endT <- as.Date("2017-10-31")
+holdingEndT <- as.Date("2017-11-30")
+rebFreq <- "month"
+shiftby <- 0
+univ <- "EI000985"
+
+# getTSR
+rebdate <- getRebDates(begT,endT,rebFreq,shiftby)
+ts <- getTS(rebdate,indexID = univ,rm=c("priceLimit","suspend"))
+tsr <- getTSR(ts,date_end_pad = holdingEndT)
+
+fls_complete_list <- CT_FactorLists()$factorID[-c(1,2)]
+
+# raw factor descrptive statistics
+refinePars <- list(scale = refinePar_default("scale",sectorAttr = NULL),
+                   scale_indfct= refinePar_default("scale",
+                                                   sectorAttr = defaultSectorAttr("ind_fct")),
+                   reg_lm = refinePar_default("reg", 
+                                              sectorAttr = defaultSectorAttr("ind"),
+                                              regLists = list(fl_cap(log = TRUE))),
+                   reg_cap = refinePar_default("reg_glm", 
+                                               sectorAttr = defaultSectorAttr("ind"), 
+                                               regLists = list(fl_cap(log = TRUE))),
+                   reg_sec = setrefinePar(refinePar_default("reg",
+                                               sectorAttr = defaultSectorAttr("ind"),
+                                               regLists = list(fl_cap(log = TRUE))), std_reg_glmwgt = "sector")
+                   )
+tablestats <- data.frame()
+
+MC.table.N1diff <- function(TSFRs, N = 10){
+  
+  portlist <- list()
+  for( i in 1:length(TSFRs)){
+    tsfr_ <- TSFRs[[i]]
+    tsfr_ <- add_rank_and_group(tsfr_, 10)
+    port_ <- subset(tsfr_, group == 1)
+    portlist[[i]] = port_
+  }
+  
+  matrix <- matrix(nrow = length(TSFRs), ncol = length(TSFRs))
+  for( i in 1: length(portlist)){
+    for( j in 1: length(portlist)){
+      matrix[i,j] <- nrow(setdiff(portlist[[i]][,c("date","stockID")], portlist[[j]][,c("date","stockID")]))/nrow(portlist[[i]])
+    }
+  }
+  colnames(matrix) <- names(TSFRs)
+  rownames(matrix) <- names(TSFRs)
+  return(matrix)
+}
+
+MC.chart.N1size <- function(TSFRs, N = 10){
+  result <- data.frame()
+  for( i in 1:length(TSFRs)){
+    TSFR_ <- TSFRs[[i]]
+    table_ <- seri.Ngroup.size(TSFR = TSFR_, N = N, include_univ = FALSE, sectorNe = NULL)
+    Q1_ <-  table_[,"Q1",drop = FALSE]
+    colnames(Q1_) <- names(TSFRs)[i]
+    result <- cbind(result, Q1_)
+  }
+  result.fig <- ggplot.ts.line(result)
+  return(result.fig)
+}
+
+MC.chart.Ngroup.size_spread <- function(TSFRs,
+                                        N = 5,
+                                        type = c("long-univ", "long-short")){
+  
+  type <- match.arg(type)
+  for( i in 1:length(TSFRs) ){
+    TSFR_ <- TSFRs[[i]]
+    size_seri_ <- seri.Ngroup.size(TSFR=TSFR_,N=N,include_univ=TRUE)
+    if(type == "long-univ"){
+      size_seri_diff_ <- size_seri_[,1] - size_seri_[,N+1]
+    }else if(type == "long-short"){
+      size_seri_diff_ <- size_seri_[,1] - size_seri_[,N]
+    }
+    colnames(size_seri_diff_) <- names(TSFRs)[i]
+    if(i == 1L){
+      result <- size_seri_diff_
+    }else{
+      result <- xts::merge.xts(result, size_seri_diff_)
+    }
+  }
+  fig <- ggplot.ts.line(result,main="Size spread between Ngroup of each factorscore",size=1)
+  return(fig)
+}
+
+```
+
+## EVERY THING
+
+```{r ROE_Q,echo=FALSE,eval=TRUE,include=TRUE,fig.height=6,fig.width=6, results='asis'}
+
+for(i in 1:length(fls_complete_list)){
+
+factorID_ <- fls_complete_list[i]
+fls <- buildFactorLists_lcfs(factorIDs = factorID_)
+tsfr_raw <- getMultiFactor(tsr, FactorList = fls)
+factor_name_ <- guess_factorNames(tsfr_raw, silence = TRUE)
+tsfrs_raw <- mTSF2TSFs(tsfr_raw)
+tsfr_raw <- tsfrs_raw[[1]]
+
+mtsfr <- factor_refine_MF(tsfr_raw,refinePars)
+cat("  \n")
+cat("## ",factor_name_, "  \n")
+
+cat("  \n")
+cat("###","NA percentage", "  \n")
+print(chart.Fct_NA(tsfr_raw))
+cat("  \n")
+
+cat("  \n")
+cat("###","Raw Factor Histogram", "  \n")
+print(chart.Fct_hist(tsfr_raw,9))
+cat("  \n")
+
+cat("  \n")
+cat("###","Refined Factor Histogram", "  \n")
+print(MF.chart.Fct_hist(mtsfr,5))
+cat("  \n")
+
+cat("  \n")
+cat("###","Stat Table", "  \n")
+print(kable(MF.table.Fct_descr(mtsfr,5),digits = 2))
+cat("  \n")
+
+cat("  \n")
+cat("###","IC", "  \n")
+print(MF.chart.IC(mTSFR = mtsfr,facet_by = 'fname'))
+cat("  \n")
+
+cat("  \n")
+cat("###","long-short Ngroup return", "  \n")
+print(MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5))
+cat("  \n")
+
+cat("  \n")
+cat("###","long-univ Ngroup return", "  \n")
+print(MF.chart.Ngroup.spread(mTSFR = mtsfr, N = 5,rtn_type = "long-univ"))
+cat("  \n")
+
+cat("  \n")
+cat("###","Top group holding stocks comparison", "  \n")
+print(kable(MC.table.N1diff(TSFRs = mTSF2TSFs(mtsfr), N = 5)))
+cat("  \n")
+
+cat("  \n")
+cat("###","Top group size time series", "  \n")
+print(MC.chart.N1size(TSFRs = mTSF2TSFs(mtsfr), N = 5))
+cat("  \n")
+
+cat("  \n")
+cat("###","Ngroup(long-univ) size diff time series", "  \n")
+print(MC.chart.Ngroup.size_spread(TSFRs = mTSF2TSFs(mtsfr), type = "long-univ"))
+cat("  \n")
+
+cat("  \n")
+cat("###","Ngroup(long-short) size diff time series", "  \n")
+print(MC.chart.Ngroup.size_spread(TSFRs = mTSF2TSFs(mtsfr), type = "long-short"))
+cat("  \n")
+
+cat("  \n")
+cat("###","Performance", "  \n")
+table_ <- MC.table.ICandNgroup(mTSF2TSFs(mtsfr), N = 5)
+print(kable(table_,digits = 2))
+cat("  \n")
+#####
+
+table_ <- data.frame(factorName=factor_name_,refinePar=rownames(table_),table_,row.names = NULL,stringsAsFactors = FALSE)
+tablestats <- rbind(tablestats,table_)
+
+}
+```
+
+## SUMMARY
+
+不同因子不同refine方式下因子IC和分组收益统计表
+```{r summary_REF_SPREAD_TABLE,echo=TRUE,eval=TRUE}
+kable(tablestats,digits = 2)
+```
